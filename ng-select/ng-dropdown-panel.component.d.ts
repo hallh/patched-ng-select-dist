@@ -22,11 +22,12 @@ export declare class NgDropdownPanelComponent implements OnDestroy {
         end: number;
     }>;
     positionChange: EventEmitter<{}>;
+    outsideClick: EventEmitter<void>;
     contentElementRef: ElementRef;
     scrollElementRef: ElementRef;
     paddingElementRef: ElementRef;
     currentPosition: DropdownPosition;
-    private _selectElementRef;
+    private _selectElement;
     private _previousStart;
     private _previousEnd;
     private _startupLoop;
@@ -35,6 +36,7 @@ export declare class NgDropdownPanelComponent implements OnDestroy {
     private _itemsList;
     private _disposeScrollListener;
     private _disposeDocumentResizeListener;
+    private _disposeDocumentClickListener;
     constructor(_ngSelect: NgSelectComponent, _renderer: Renderer2, _elementRef: ElementRef, _zone: NgZone, _virtualScrollService: VirtualScrollService, _window: WindowService);
     ngOnInit(): void;
     ngOnChanges(changes: SimpleChanges): void;
@@ -42,6 +44,7 @@ export declare class NgDropdownPanelComponent implements OnDestroy {
     refresh(): void;
     scrollInto(item: NgOption): void;
     scrollIntoTag(): void;
+    private _handleDocumentClick();
     private _handleScroll();
     private _handleItemsChange(items);
     private _updateItems();

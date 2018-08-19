@@ -1395,6 +1395,9 @@ var WindowService = /** @class */ (function () {
     WindowService.prototype.requestAnimationFrame = function (fn) {
         return window.requestAnimationFrame(fn);
     };
+    WindowService.prototype.setTimeout = function (handler, timeout) {
+        return window.setTimeout(handler, timeout);
+    };
     return WindowService;
 }());
 WindowService.decorators = [
@@ -1466,13 +1469,15 @@ var NgDropdownPanelComponent = /** @class */ (function () {
         this.update = new core.EventEmitter();
         this.scrollToEnd = new core.EventEmitter();
         this.positionChange = new core.EventEmitter();
+        this.outsideClick = new core.EventEmitter();
         this.currentPosition = 'bottom';
         this._startupLoop = true;
         this._isScrolledToMarked = false;
         this._scrollToEndFired = false;
         this._disposeScrollListener = function () { };
         this._disposeDocumentResizeListener = function () { };
-        this._selectElementRef = _ngSelect.elementRef;
+        this._disposeDocumentClickListener = function () { };
+        this._selectElement = _ngSelect.elementRef.nativeElement;
         this._itemsList = _ngSelect.itemsList;
     }
     NgDropdownPanelComponent.prototype.ngOnInit = function () {
@@ -1480,6 +1485,7 @@ var NgDropdownPanelComponent = /** @class */ (function () {
         if (this.appendTo) {
             this._handleAppendTo();
         }
+        this._handleDocumentClick();
     };
     NgDropdownPanelComponent.prototype.ngOnChanges = function (changes) {
         if (changes["position"] && changes["position"].currentValue) {
@@ -1501,6 +1507,7 @@ var NgDropdownPanelComponent = /** @class */ (function () {
         if (this.appendTo) {
             this._renderer.removeChild(this._elementRef.nativeElement.parentNode, this._elementRef.nativeElement);
         }
+        this._disposeDocumentClickListener();
     };
     NgDropdownPanelComponent.prototype.refresh = function () {
         var _this = this;
@@ -1532,6 +1539,19 @@ var NgDropdownPanelComponent = /** @class */ (function () {
         var el = this.scrollElementRef.nativeElement;
         var d = this._calculateDimensions();
         el.scrollTop = d.childHeight * (d.itemsLength + 1);
+    };
+    NgDropdownPanelComponent.prototype._handleDocumentClick = function () {
+        var _this = this;
+        this._disposeDocumentClickListener = this._renderer.listen('document', 'mousedown', function ($event) {
+            if (_this._selectElement.contains($event.target)) {
+                return;
+            }
+            var dropdown = _this._elementRef.nativeElement;
+            if (dropdown.contains($event.target)) {
+                return;
+            }
+            _this.outsideClick.emit();
+        });
     };
     NgDropdownPanelComponent.prototype._handleScroll = function () {
         var _this = this;
@@ -1630,7 +1650,7 @@ var NgDropdownPanelComponent = /** @class */ (function () {
     };
     NgDropdownPanelComponent.prototype._updateDropdownPosition = function () {
         var parent = document.querySelector(this.appendTo) || document.body;
-        var selectRect = this._selectElementRef.nativeElement.getBoundingClientRect();
+        var selectRect = this._selectElement.getBoundingClientRect();
         var dropdownPanel = this._elementRef.nativeElement;
         var boundingRect = parent.getBoundingClientRect();
         var offsetTop = selectRect.top - boundingRect.top;
@@ -1648,7 +1668,7 @@ var NgDropdownPanelComponent = /** @class */ (function () {
             setTimeout(function () { _this._autoPositionDropdown(); }, 50);
             return;
         }
-        var selectRect = this._selectElementRef.nativeElement.getBoundingClientRect();
+        var selectRect = this._selectElement.getBoundingClientRect();
         var scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
         var offsetTop = selectRect.top + window.pageYOffset;
         var height = selectRect.height;
@@ -1695,6 +1715,7 @@ NgDropdownPanelComponent.propDecorators = {
     "update": [{ type: core.Output },],
     "scrollToEnd": [{ type: core.Output },],
     "positionChange": [{ type: core.Output },],
+    "outsideClick": [{ type: core.Output },],
     "contentElementRef": [{ type: core.ViewChild, args: ['content', { read: core.ElementRef },] },],
     "scrollElementRef": [{ type: core.ViewChild, args: ['scroll', { read: core.ElementRef },] },],
     "paddingElementRef": [{ type: core.ViewChild, args: ['padding', { read: core.ElementRef },] },],
@@ -1713,10 +1734,12 @@ ConsoleService.decorators = [
 ConsoleService.ctorParameters = function () { return []; };
 var NG_SELECT_DEFAULT_CONFIG = new core.InjectionToken('ng-select-default-options');
 var NgSelectComponent = /** @class */ (function () {
-    function NgSelectComponent(config, _cd, _console, elementRef) {
+    function NgSelectComponent(config, _cd, _console, _zone, _window, elementRef) {
         var _this = this;
         this._cd = _cd;
         this._console = _console;
+        this._zone = _zone;
+        this._window = _window;
         this.elementRef = elementRef;
         this.items = [];
         this.clearable = true;
@@ -1839,8 +1862,23 @@ var NgSelectComponent = /** @class */ (function () {
             }
         }
     };
-    NgSelectComponent.prototype.handleArrowClick = function ($event) {
-        $event.stopPropagation();
+    NgSelectComponent.prototype.handleMousedown = function ($event) {
+        if ($event.target.className === 'ng-clear') {
+            this.handleClearClick();
+            return;
+        }
+        if ($event.target.className === 'ng-arrow') {
+            this.handleArrowClick();
+            return;
+        }
+        if (this.searchable) {
+            this.open();
+        }
+        else {
+            this.toggle();
+        }
+    };
+    NgSelectComponent.prototype.handleArrowClick = function () {
         if (this.isOpen) {
             this.close();
         }
@@ -1848,8 +1886,7 @@ var NgSelectComponent = /** @class */ (function () {
             this.open();
         }
     };
-    NgSelectComponent.prototype.handleClearClick = function ($event) {
-        $event.stopPropagation();
+    NgSelectComponent.prototype.handleClearClick = function () {
         if (this.hasValue) {
             this.clearModel();
         }
@@ -1910,7 +1947,7 @@ var NgSelectComponent = /** @class */ (function () {
         this._clearSearch();
         this._onTouched();
         this.closeEvent.emit();
-        this.detectChanges();
+        this._cd.markForCheck();
     };
     NgSelectComponent.prototype.toggleItem = function (item) {
         if (!item || item.disabled || this.isDisabled) {
@@ -2018,8 +2055,16 @@ var NgSelectComponent = /** @class */ (function () {
         }
     };
     NgSelectComponent.prototype.focusSearchInput = function () {
-        this.filterInput.nativeElement.focus();
-        this.filterInput.nativeElement.select();
+        var _this = this;
+        if (!this.filterInput) {
+            return;
+        }
+        this._zone.runOutsideAngular(function () {
+            _this._window.setTimeout(function () {
+                _this.filterInput.nativeElement.focus();
+                _this.filterInput.nativeElement.select();
+            }, 0);
+        });
     };
     NgSelectComponent.prototype._setItems = function (items) {
         var firstItem = items[0];
@@ -2267,8 +2312,8 @@ var NgSelectComponent = /** @class */ (function () {
 NgSelectComponent.decorators = [
     { type: core.Component, args: [{
                 selector: 'ng-select',
-                template: "<div (click)=\"searchable ? open() : toggle()\" [class.ng-has-value]=\"hasValue\" class=\"ng-control\">\n    <div class=\"ng-value-container\">\n        <div class=\"ng-placeholder\">{{placeholder}}</div>\n        <ng-container *ngIf=\"!multiLabelTemplate && selectedItems.length > 0\">\n            <div [class.disabled]=\"item.disabled\" class=\"ng-value\" *ngFor=\"let item of selectedItems\">\n                <ng-template #defaultLabelTemplate>\n                    <span class=\"ng-value-icon left\" (click)=\"unselect(item); $event.stopPropagation()\" aria-hidden=\"true\">\u00D7</span>\n                    <span class=\"ng-value-label\" [innerHTML]=\"item.label\"></span>\n                </ng-template>\n                <ng-template\n                    [ngTemplateOutlet]=\"labelTemplate || defaultLabelTemplate\"\n                    [ngTemplateOutletContext]=\"{ item: item.value, clear: clearItem, label: item.label }\">\n                </ng-template>\n            </div>\n        </ng-container>\n        <ng-template *ngIf=\"multiLabelTemplate && selectedValues.length > 0\"\n                [ngTemplateOutlet]=\"multiLabelTemplate\"\n                [ngTemplateOutletContext]=\"{ items: selectedValues, clear: clearItem }\">\n        </ng-template>\n        <div *ngIf=\"showFilter()\" class=\"ng-input\">\n            <input #filterInput\n                   type=\"text\"\n                   autocomplete=\"off\"\n                   [readOnly]=\"!searchable\"\n                   [value]=\"filterValue\"\n                   (input)=\"filter(filterInput.value)\"\n                   (focus)=\"onInputFocus($event)\"\n                   (blur)=\"onInputBlur($event)\"\n                   (change)=\"$event.stopPropagation()\"\n                   role=\"combobox\">\n        </div>\n    </div>\n    <div class=\"ng-spinner-loader\" *ngIf=\"isLoading\"></div>\n    <span *ngIf=\"showClear()\" (click)=\"handleClearClick($event)\" class=\"ng-clear-zone\" title=\"{{clearAllText}}\">\n        <span class=\"ng-clear\" aria-hidden=\"true\">\u00D7</span>\n    </span>\n    <span (click)=\"handleArrowClick($event)\" class=\"ng-arrow-zone\">\n        <span class=\"ng-arrow\"></span>\n    </span>\n</div>\n<div class=\"ng-overlay-container\" *ngIf=\"isOpen\">\n    <div class=\"ng-overlay\" (click)=\"close()\" ></div>\n</div>\n<ng-dropdown-panel *ngIf=\"isOpen\"\n    class=\"ng-dropdown-panel\"\n    [virtualScroll]=\"virtualScroll\"\n    [bufferAmount]=\"bufferAmount\"\n    [appendTo]=\"appendTo\"\n    [position]=\"dropdownPosition\"\n    [headerTemplate]=\"headerTemplate\"\n    [footerTemplate]=\"footerTemplate\"\n    [items]=\"itemsList.filteredItems\"\n    (update)=\"viewPortItems = $event\"\n    (positionChange)=\"currentDropdownPosition = $event\"\n    (scrollToEnd)=\"scrollToEnd.emit($event)\"\n    [ngClass]=\"{'multiple': multiple}\">\n    <ng-container>\n        <div class=\"ng-option\" role=\"option\" (click)=\"toggleItem(item)\" (mousedown)=\"$event.preventDefault()\" (mouseover)=\"onItemHover(item)\"\n                *ngFor=\"let item of viewPortItems\"\n                [class.disabled]=\"item.disabled\"\n                [class.selected]=\"item.selected\"\n                [class.ng-optgroup]=\"item.hasChildren\"\n                [class.ng-option]=\"!item.hasChildren\"\n                [class.ng-option-child]=\"!!item.parent\"\n                [class.marked]=\"item === itemsList.markedItem\">\n            <ng-template #defaultOptionTemplate>\n                <span class=\"ng-option-label\" [innerHTML]=\"item.label\"  [ngOptionHighlight]=\"filterValue\"></span>\n            </ng-template>\n            <ng-template #defaultOptGroupTemplate>\n                <span class=\"ng-option-label\" [innerHTML]=\"item.label\"  [ngOptionHighlight]=\"filterValue\"></span>\n            </ng-template>\n            <ng-template\n                [ngTemplateOutlet]=\"item.hasChildren ? (optgroupTemplate || defaultOptGroupTemplate) : (optionTemplate || defaultOptionTemplate)\"\n                [ngTemplateOutletContext]=\"{ item: item.value, index: item.index, searchTerm: filterValue }\">\n            </ng-template>\n        </div>\n        <div class=\"ng-option\" [class.marked]=\"!itemsList.markedItem\" (mouseover)=\"itemsList.unmarkItem()\" role=\"option\" (click)=\"selectTag()\" *ngIf=\"showAddTag()\">\n            <span><span class=\"ng-tag-label\">{{addTagText}}</span>\"{{filterValue}}\"</span>\n        </div>\n    </ng-container>\n    <ng-container *ngIf=\"showNoItemsFound()\">\n        <ng-template #defaultNotfoundTemplate>\n            <div class=\"ng-option disabled\" [innerHTML]=\"notFoundText\" *ngIf=\"showNoItemsFound()\"></div>\n        </ng-template>\n        <ng-template\n            [ngTemplateOutlet]=\"notFoundTemplate || defaultNotfoundTemplate\"\n            [ngTemplateOutletContext]=\"{ searchTerm: filterValue }\">\n        </ng-template>\n    </ng-container>\n    <ng-container *ngIf=\"showTypeToSearch()\">\n        <ng-template #defaultTypeToSearchTemplate>\n            <div class=\"ng-option disabled\" [innerHTML]=\"typeToSearchText\"></div>\n        </ng-template>\n        <ng-template\n            [ngTemplateOutlet]=\"typeToSearchTemplate || defaultTypeToSearchTemplate\">\n        </ng-template>\n    </ng-container>\n    <ng-container *ngIf=\"isLoading && itemsList.filteredItems.length === 0\">\n        <ng-template #defaultLoadingTextTemplate>\n            <div class=\"ng-option disabled\" [innerHTML]=\"loadingText\"></div>\n        </ng-template>\n        <ng-template\n            [ngTemplateOutlet]=\"loadingTextTemplate || defaultLoadingTextTemplate\"\n            [ngTemplateOutletContext]=\"{ searchTerm: filterValue  }\">\n        </ng-template>\n    </ng-container>\n</ng-dropdown-panel>\n",
-                styles: [".ng-select{\n  position:relative;\n  display:block;\n  -webkit-box-sizing:border-box;\n  box-sizing:border-box; }\n  .ng-select div,\n  .ng-select input,\n  .ng-select span{\n    -webkit-box-sizing:border-box;\n    box-sizing:border-box; }\n  .ng-select [hidden]{\n    display:none; }\n  .ng-select.searchable .ng-control .ng-value-container .ng-input{\n    opacity:1; }\n  .ng-select.opened .ng-control{\n    z-index:1001; }\n  .ng-select.disabled .ng-control .ng-value-container .ng-placeholder,\n  .ng-select.disabled .ng-control .ng-value-container .ng-value{\n    -webkit-user-select:none;\n       -moz-user-select:none;\n        -ms-user-select:none;\n            user-select:none;\n    cursor:default; }\n  .ng-select.disabled .ng-arrow-zone{\n    cursor:default; }\n  .ng-select .ng-has-value .ng-placeholder, .ng-select.filtered .ng-placeholder{\n    display:none; }\n  .ng-select .ng-control{\n    color:#333;\n    cursor:default;\n    display:-webkit-box;\n    display:-ms-flexbox;\n    display:flex;\n    outline:none;\n    overflow:hidden;\n    position:relative;\n    width:100%; }\n    .ng-select .ng-control .ng-value-container{\n      display:-webkit-box;\n      display:-ms-flexbox;\n      display:flex;\n      -webkit-box-flex:1;\n          -ms-flex:1;\n              flex:1; }\n      .ng-select .ng-control .ng-value-container .ng-input{\n        opacity:0; }\n        .ng-select .ng-control .ng-value-container .ng-input > input{\n          -webkit-box-sizing:content-box;\n                  box-sizing:content-box;\n          background:none transparent;\n          border:0 none;\n          -webkit-box-shadow:none;\n                  box-shadow:none;\n          outline:none;\n          cursor:default;\n          width:100%; }\n  .ng-select.ng-single.filtered .ng-control .ng-value-container .ng-value{\n    visibility:hidden; }\n  .ng-select.ng-single .ng-control .ng-value-container{\n    white-space:nowrap;\n    overflow:hidden;\n    text-overflow:ellipsis; }\n    .ng-select.ng-single .ng-control .ng-value-container .ng-value{\n      white-space:nowrap;\n      overflow:hidden;\n      text-overflow:ellipsis; }\n      .ng-select.ng-single .ng-control .ng-value-container .ng-value .ng-value-icon{\n        display:none; }\n    .ng-select.ng-single .ng-control .ng-value-container .ng-input{\n      position:absolute;\n      left:0;\n      width:100%; }\n  .ng-select.ng-multiple.disabled > .ng-control .ng-value-container .ng-value .ng-value-icon{\n    display:none; }\n  .ng-select.ng-multiple .ng-control .ng-value-container{\n    -ms-flex-wrap:wrap;\n        flex-wrap:wrap; }\n    .ng-select.ng-multiple .ng-control .ng-value-container .ng-placeholder{\n      position:absolute; }\n    .ng-select.ng-multiple .ng-control .ng-value-container .ng-value{\n      white-space:nowrap; }\n      .ng-select.ng-multiple .ng-control .ng-value-container .ng-value.disabled .ng-value-icon{\n        display:none; }\n      .ng-select.ng-multiple .ng-control .ng-value-container .ng-value .ng-value-icon{\n        cursor:pointer; }\n    .ng-select.ng-multiple .ng-control .ng-value-container .ng-input{\n      -webkit-box-flex:1;\n          -ms-flex:1;\n              flex:1;\n      z-index:2; }\n    .ng-select.ng-multiple .ng-control .ng-value-container .ng-placeholder{\n      z-index:1; }\n  .ng-select .ng-clear-zone{\n    cursor:pointer;\n    position:relative;\n    width:17px;\n    -webkit-user-select:none;\n       -moz-user-select:none;\n        -ms-user-select:none;\n            user-select:none; }\n    .ng-select .ng-clear-zone .ng-clear{\n      display:inline-block;\n      font-size:18px;\n      line-height:1; }\n  .ng-select .ng-spinner-loader{\n    border-radius:50%;\n    width:17px;\n    height:17px;\n    margin-right:5px;\n    font-size:10px;\n    position:relative;\n    text-indent:-9999em;\n    border-top:2px solid rgba(66, 66, 66, 0.2);\n    border-right:2px solid rgba(66, 66, 66, 0.2);\n    border-bottom:2px solid rgba(66, 66, 66, 0.2);\n    border-left:2px solid #424242;\n    -webkit-transform:translateZ(0);\n            transform:translateZ(0);\n    -webkit-animation:load8 0.8s infinite linear;\n            animation:load8 0.8s infinite linear; }\n    .ng-select .ng-spinner-loader:after{\n      border-radius:50%;\n      width:17px;\n      height:17px; }\n@-webkit-keyframes load8{\n  0%{\n    -webkit-transform:rotate(0deg);\n    transform:rotate(0deg); }\n  100%{\n    -webkit-transform:rotate(360deg);\n    transform:rotate(360deg); } }\n@keyframes load8{\n  0%{\n    -webkit-transform:rotate(0deg);\n    transform:rotate(0deg); }\n  100%{\n    -webkit-transform:rotate(360deg);\n    transform:rotate(360deg); } }\n  .ng-select .ng-arrow-zone{\n    cursor:pointer;\n    position:relative;\n    text-align:center;\n    -webkit-user-select:none;\n       -moz-user-select:none;\n        -ms-user-select:none;\n            user-select:none; }\n    .ng-select .ng-arrow-zone .ng-arrow{\n      display:inline-block;\n      height:0;\n      width:0;\n      position:relative; }\n  .ng-select .ng-overlay-container{\n    pointer-events:none;\n    top:0;\n    left:0;\n    height:100%;\n    width:100%;\n    position:fixed;\n    z-index:1000; }\n    .ng-select .ng-overlay-container .ng-overlay{\n      top:0;\n      bottom:0;\n      left:0;\n      right:0;\n      opacity:0;\n      position:absolute;\n      pointer-events:auto;\n      z-index:1000; }\n"],
+                template: "<div (mousedown)=\"handleMousedown($event)\" [class.ng-has-value]=\"hasValue\" class=\"ng-control\">\n    <div class=\"ng-value-container\">\n        <div class=\"ng-placeholder\">{{placeholder}}</div>\n        <ng-container *ngIf=\"!multiLabelTemplate && selectedItems.length > 0\">\n            <div [class.disabled]=\"item.disabled\" class=\"ng-value\" *ngFor=\"let item of selectedItems\">\n                <ng-template #defaultLabelTemplate>\n                    <span class=\"ng-value-icon left\" (click)=\"unselect(item); $event.stopPropagation()\" aria-hidden=\"true\">\u00D7</span>\n                    <span class=\"ng-value-label\" [innerHTML]=\"item.label\"></span>\n                </ng-template>\n                <ng-template\n                    [ngTemplateOutlet]=\"labelTemplate || defaultLabelTemplate\"\n                    [ngTemplateOutletContext]=\"{ item: item.value, clear: clearItem, label: item.label }\">\n                </ng-template>\n            </div>\n        </ng-container>\n        <ng-template *ngIf=\"multiLabelTemplate && selectedValues.length > 0\"\n                [ngTemplateOutlet]=\"multiLabelTemplate\"\n                [ngTemplateOutletContext]=\"{ items: selectedValues, clear: clearItem }\">\n        </ng-template>\n        <div *ngIf=\"showFilter()\" class=\"ng-input\">\n            <input #filterInput\n                   type=\"text\"\n                   autocomplete=\"off\"\n                   [readOnly]=\"!searchable\"\n                   [value]=\"filterValue\"\n                   (input)=\"filter(filterInput.value)\"\n                   (focus)=\"onInputFocus($event)\"\n                   (blur)=\"onInputBlur($event)\"\n                   (change)=\"$event.stopPropagation()\"\n                   role=\"combobox\">\n        </div>\n    </div>\n    <div class=\"ng-spinner-loader\" *ngIf=\"isLoading\"></div>\n    <span *ngIf=\"showClear()\" class=\"ng-clear-zone\" title=\"{{clearAllText}}\">\n        <span class=\"ng-clear\" aria-hidden=\"true\">\u00D7</span>\n    </span>\n    <span class=\"ng-arrow-zone\">\n        <span class=\"ng-arrow\"></span>\n    </span>\n</div>\n<ng-dropdown-panel *ngIf=\"isOpen\"\n    class=\"ng-dropdown-panel\"\n    [virtualScroll]=\"virtualScroll\"\n    [bufferAmount]=\"bufferAmount\"\n    [appendTo]=\"appendTo\"\n    [position]=\"dropdownPosition\"\n    [headerTemplate]=\"headerTemplate\"\n    [footerTemplate]=\"footerTemplate\"\n    [items]=\"itemsList.filteredItems\"\n    (update)=\"viewPortItems = $event\"\n    (positionChange)=\"currentDropdownPosition = $event\"\n    (scrollToEnd)=\"scrollToEnd.emit($event)\"\n    (outsideClick)=\"close()\"\n    [ngClass]=\"{'multiple': multiple}\">\n    <ng-container>\n        <div class=\"ng-option\" role=\"option\" (click)=\"toggleItem(item)\" (mousedown)=\"$event.preventDefault()\" (mouseover)=\"onItemHover(item)\"\n                *ngFor=\"let item of viewPortItems\"\n                [class.disabled]=\"item.disabled\"\n                [class.selected]=\"item.selected\"\n                [class.ng-optgroup]=\"item.hasChildren\"\n                [class.ng-option]=\"!item.hasChildren\"\n                [class.ng-option-child]=\"!!item.parent\"\n                [class.marked]=\"item === itemsList.markedItem\">\n            <ng-template #defaultOptionTemplate>\n                <span class=\"ng-option-label\" [innerHTML]=\"item.label\"  [ngOptionHighlight]=\"filterValue\"></span>\n            </ng-template>\n            <ng-template #defaultOptGroupTemplate>\n                <span class=\"ng-option-label\" [innerHTML]=\"item.label\"  [ngOptionHighlight]=\"filterValue\"></span>\n            </ng-template>\n            <ng-template\n                [ngTemplateOutlet]=\"item.hasChildren ? (optgroupTemplate || defaultOptGroupTemplate) : (optionTemplate || defaultOptionTemplate)\"\n                [ngTemplateOutletContext]=\"{ item: item.value, index: item.index, searchTerm: filterValue }\">\n            </ng-template>\n        </div>\n        <div class=\"ng-option\" [class.marked]=\"!itemsList.markedItem\" (mouseover)=\"itemsList.unmarkItem()\" role=\"option\" (click)=\"selectTag()\" *ngIf=\"showAddTag()\">\n            <span><span class=\"ng-tag-label\">{{addTagText}}</span>\"{{filterValue}}\"</span>\n        </div>\n    </ng-container>\n    <ng-container *ngIf=\"showNoItemsFound()\">\n        <ng-template #defaultNotfoundTemplate>\n            <div class=\"ng-option disabled\" [innerHTML]=\"notFoundText\" *ngIf=\"showNoItemsFound()\"></div>\n        </ng-template>\n        <ng-template\n            [ngTemplateOutlet]=\"notFoundTemplate || defaultNotfoundTemplate\"\n            [ngTemplateOutletContext]=\"{ searchTerm: filterValue }\">\n        </ng-template>\n    </ng-container>\n    <ng-container *ngIf=\"showTypeToSearch()\">\n        <ng-template #defaultTypeToSearchTemplate>\n            <div class=\"ng-option disabled\" [innerHTML]=\"typeToSearchText\"></div>\n        </ng-template>\n        <ng-template\n            [ngTemplateOutlet]=\"typeToSearchTemplate || defaultTypeToSearchTemplate\">\n        </ng-template>\n    </ng-container>\n    <ng-container *ngIf=\"isLoading && itemsList.filteredItems.length === 0\">\n        <ng-template #defaultLoadingTextTemplate>\n            <div class=\"ng-option disabled\" [innerHTML]=\"loadingText\"></div>\n        </ng-template>\n        <ng-template\n            [ngTemplateOutlet]=\"loadingTextTemplate || defaultLoadingTextTemplate\"\n            [ngTemplateOutletContext]=\"{ searchTerm: filterValue  }\">\n        </ng-template>\n    </ng-container>\n</ng-dropdown-panel>\n",
+                styles: [".ng-select{\n  position:relative;\n  display:block;\n  -webkit-box-sizing:border-box;\n  box-sizing:border-box; }\n  .ng-select div,\n  .ng-select input,\n  .ng-select span{\n    -webkit-box-sizing:border-box;\n    box-sizing:border-box; }\n  .ng-select [hidden]{\n    display:none; }\n  .ng-select.searchable .ng-control .ng-value-container .ng-input{\n    opacity:1; }\n  .ng-select.opened .ng-control{\n    z-index:1001; }\n  .ng-select.disabled .ng-control .ng-value-container .ng-placeholder,\n  .ng-select.disabled .ng-control .ng-value-container .ng-value{\n    -webkit-user-select:none;\n       -moz-user-select:none;\n        -ms-user-select:none;\n            user-select:none;\n    cursor:default; }\n  .ng-select.disabled .ng-arrow-zone{\n    cursor:default; }\n  .ng-select .ng-has-value .ng-placeholder, .ng-select.filtered .ng-placeholder{\n    display:none; }\n  .ng-select .ng-control{\n    color:#333;\n    cursor:default;\n    display:-webkit-box;\n    display:-ms-flexbox;\n    display:flex;\n    outline:none;\n    overflow:hidden;\n    position:relative;\n    width:100%; }\n    .ng-select .ng-control .ng-value-container{\n      display:-webkit-box;\n      display:-ms-flexbox;\n      display:flex;\n      -webkit-box-flex:1;\n          -ms-flex:1;\n              flex:1; }\n      .ng-select .ng-control .ng-value-container .ng-input{\n        opacity:0; }\n        .ng-select .ng-control .ng-value-container .ng-input > input{\n          -webkit-box-sizing:content-box;\n                  box-sizing:content-box;\n          background:none transparent;\n          border:0 none;\n          -webkit-box-shadow:none;\n                  box-shadow:none;\n          outline:none;\n          cursor:default;\n          width:100%; }\n  .ng-select.ng-single.filtered .ng-control .ng-value-container .ng-value{\n    visibility:hidden; }\n  .ng-select.ng-single .ng-control .ng-value-container{\n    white-space:nowrap;\n    overflow:hidden;\n    text-overflow:ellipsis; }\n    .ng-select.ng-single .ng-control .ng-value-container .ng-value{\n      white-space:nowrap;\n      overflow:hidden;\n      text-overflow:ellipsis; }\n      .ng-select.ng-single .ng-control .ng-value-container .ng-value .ng-value-icon{\n        display:none; }\n    .ng-select.ng-single .ng-control .ng-value-container .ng-input{\n      position:absolute;\n      left:0;\n      width:100%; }\n  .ng-select.ng-multiple.disabled > .ng-control .ng-value-container .ng-value .ng-value-icon{\n    display:none; }\n  .ng-select.ng-multiple .ng-control .ng-value-container{\n    -ms-flex-wrap:wrap;\n        flex-wrap:wrap; }\n    .ng-select.ng-multiple .ng-control .ng-value-container .ng-placeholder{\n      position:absolute; }\n    .ng-select.ng-multiple .ng-control .ng-value-container .ng-value{\n      white-space:nowrap; }\n      .ng-select.ng-multiple .ng-control .ng-value-container .ng-value.disabled .ng-value-icon{\n        display:none; }\n      .ng-select.ng-multiple .ng-control .ng-value-container .ng-value .ng-value-icon{\n        cursor:pointer; }\n    .ng-select.ng-multiple .ng-control .ng-value-container .ng-input{\n      -webkit-box-flex:1;\n          -ms-flex:1;\n              flex:1;\n      z-index:2; }\n    .ng-select.ng-multiple .ng-control .ng-value-container .ng-placeholder{\n      z-index:1; }\n  .ng-select .ng-clear-zone{\n    cursor:pointer;\n    position:relative;\n    width:17px;\n    -webkit-user-select:none;\n       -moz-user-select:none;\n        -ms-user-select:none;\n            user-select:none; }\n    .ng-select .ng-clear-zone .ng-clear{\n      display:inline-block;\n      font-size:18px;\n      line-height:1; }\n  .ng-select .ng-spinner-loader{\n    border-radius:50%;\n    width:17px;\n    height:17px;\n    margin-right:5px;\n    font-size:10px;\n    position:relative;\n    text-indent:-9999em;\n    border-top:2px solid rgba(66, 66, 66, 0.2);\n    border-right:2px solid rgba(66, 66, 66, 0.2);\n    border-bottom:2px solid rgba(66, 66, 66, 0.2);\n    border-left:2px solid #424242;\n    -webkit-transform:translateZ(0);\n            transform:translateZ(0);\n    -webkit-animation:load8 0.8s infinite linear;\n            animation:load8 0.8s infinite linear; }\n    .ng-select .ng-spinner-loader:after{\n      border-radius:50%;\n      width:17px;\n      height:17px; }\n@-webkit-keyframes load8{\n  0%{\n    -webkit-transform:rotate(0deg);\n    transform:rotate(0deg); }\n  100%{\n    -webkit-transform:rotate(360deg);\n    transform:rotate(360deg); } }\n@keyframes load8{\n  0%{\n    -webkit-transform:rotate(0deg);\n    transform:rotate(0deg); }\n  100%{\n    -webkit-transform:rotate(360deg);\n    transform:rotate(360deg); } }\n  .ng-select .ng-arrow-zone{\n    cursor:pointer;\n    position:relative;\n    text-align:center;\n    -webkit-user-select:none;\n       -moz-user-select:none;\n        -ms-user-select:none;\n            user-select:none; }\n    .ng-select .ng-arrow-zone .ng-arrow{\n      display:inline-block;\n      height:0;\n      width:0;\n      position:relative; }\n"],
                 providers: [{
                         provide: forms.NG_VALUE_ACCESSOR,
                         useExisting: core.forwardRef(function () { return NgSelectComponent; }),
@@ -2289,6 +2334,8 @@ NgSelectComponent.ctorParameters = function () { return [
     { type: undefined, decorators: [{ type: core.Inject, args: [NG_SELECT_DEFAULT_CONFIG,] },] },
     { type: core.ChangeDetectorRef, },
     { type: ConsoleService, },
+    { type: core.NgZone, },
+    { type: WindowService, },
     { type: core.ElementRef, },
 ]; };
 NgSelectComponent.propDecorators = {

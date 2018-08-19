@@ -1,17 +1,20 @@
 import { Subject } from 'rxjs/Subject';
 import { ControlValueAccessor } from '@angular/forms';
-import { OnDestroy, OnChanges, AfterViewInit, ChangeDetectorRef, EventEmitter, TemplateRef, ElementRef, SimpleChanges, QueryList, InjectionToken } from '@angular/core';
+import { OnDestroy, OnChanges, AfterViewInit, ChangeDetectorRef, EventEmitter, TemplateRef, ElementRef, SimpleChanges, QueryList, InjectionToken, NgZone } from '@angular/core';
 import { NgOption, NgSelectConfig } from './ng-select.types';
 import { ItemsList } from './items-list';
 import { NgOptionComponent } from './ng-option.component';
 import { NgDropdownPanelComponent } from './ng-dropdown-panel.component';
 import { ConsoleService } from './console.service';
+import { WindowService } from './window.service';
 export declare const NG_SELECT_DEFAULT_CONFIG: InjectionToken<NgSelectConfig>;
 export declare type DropdownPosition = 'bottom' | 'top' | 'auto';
 export declare type AddTagFn = ((term: string) => any | Promise<any>);
 export declare class NgSelectComponent implements OnDestroy, OnChanges, AfterViewInit, ControlValueAccessor {
     private _cd;
     private _console;
+    private _zone;
+    private _window;
     elementRef: ElementRef;
     items: any[];
     bindLabel: string;
@@ -79,7 +82,7 @@ export declare class NgSelectComponent implements OnDestroy, OnChanges, AfterVie
     private _onChange;
     private _onTouched;
     clearItem: (item: any) => void;
-    constructor(config: NgSelectConfig, _cd: ChangeDetectorRef, _console: ConsoleService, elementRef: ElementRef);
+    constructor(config: NgSelectConfig, _cd: ChangeDetectorRef, _console: ConsoleService, _zone: NgZone, _window: WindowService, elementRef: ElementRef);
     readonly selectedItems: NgOption[];
     readonly selectedValues: (string | Object)[];
     readonly isLoading: boolean;
@@ -88,8 +91,9 @@ export declare class NgSelectComponent implements OnDestroy, OnChanges, AfterVie
     ngAfterViewInit(): void;
     ngOnDestroy(): void;
     handleKeyDown($event: KeyboardEvent): void;
-    handleArrowClick($event: Event): void;
-    handleClearClick($event: Event): void;
+    handleMousedown($event: any): void;
+    handleArrowClick(): void;
+    handleClearClick(): void;
     clearModel(): void;
     writeValue(value: any | any[]): void;
     registerOnChange(fn: any): void;

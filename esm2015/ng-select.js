@@ -1489,6 +1489,14 @@ class WindowService {
     requestAnimationFrame(fn) {
         return window.requestAnimationFrame(fn);
     }
+    /**
+     * @param {?} handler
+     * @param {?} timeout
+     * @return {?}
+     */
+    setTimeout(handler, timeout) {
+        return window.setTimeout(handler, timeout);
+    }
 }
 WindowService.decorators = [
     { type: Injectable },
@@ -1597,13 +1605,15 @@ class NgDropdownPanelComponent {
         this.update = new EventEmitter();
         this.scrollToEnd = new EventEmitter();
         this.positionChange = new EventEmitter();
+        this.outsideClick = new EventEmitter();
         this.currentPosition = 'bottom';
         this._startupLoop = true;
         this._isScrolledToMarked = false;
         this._scrollToEndFired = false;
         this._disposeScrollListener = () => { };
         this._disposeDocumentResizeListener = () => { };
-        this._selectElementRef = _ngSelect.elementRef;
+        this._disposeDocumentClickListener = () => { };
+        this._selectElement = _ngSelect.elementRef.nativeElement;
         this._itemsList = _ngSelect.itemsList;
     }
     /**
@@ -1614,6 +1624,7 @@ class NgDropdownPanelComponent {
         if (this.appendTo) {
             this._handleAppendTo();
         }
+        this._handleDocumentClick();
     }
     /**
      * @param {?} changes
@@ -1642,6 +1653,7 @@ class NgDropdownPanelComponent {
         if (this.appendTo) {
             this._renderer.removeChild(this._elementRef.nativeElement.parentNode, this._elementRef.nativeElement);
         }
+        this._disposeDocumentClickListener();
     }
     /**
      * @return {?}
@@ -1682,6 +1694,21 @@ class NgDropdownPanelComponent {
         const /** @type {?} */ el = this.scrollElementRef.nativeElement;
         const /** @type {?} */ d = this._calculateDimensions();
         el.scrollTop = d.childHeight * (d.itemsLength + 1);
+    }
+    /**
+     * @return {?}
+     */
+    _handleDocumentClick() {
+        this._disposeDocumentClickListener = this._renderer.listen('document', 'mousedown', ($event) => {
+            if (this._selectElement.contains($event.target)) {
+                return;
+            }
+            const /** @type {?} */ dropdown = this._elementRef.nativeElement;
+            if (dropdown.contains($event.target)) {
+                return;
+            }
+            this.outsideClick.emit();
+        });
     }
     /**
      * @return {?}
@@ -1805,7 +1832,7 @@ class NgDropdownPanelComponent {
      */
     _updateDropdownPosition() {
         const /** @type {?} */ parent = document.querySelector(this.appendTo) || document.body;
-        const /** @type {?} */ selectRect = this._selectElementRef.nativeElement.getBoundingClientRect();
+        const /** @type {?} */ selectRect = this._selectElement.getBoundingClientRect();
         const /** @type {?} */ dropdownPanel = this._elementRef.nativeElement;
         const /** @type {?} */ boundingRect = parent.getBoundingClientRect();
         const /** @type {?} */ offsetTop = selectRect.top - boundingRect.top;
@@ -1825,7 +1852,7 @@ class NgDropdownPanelComponent {
             setTimeout(() => { this._autoPositionDropdown(); }, 50);
             return;
         }
-        const /** @type {?} */ selectRect = this._selectElementRef.nativeElement.getBoundingClientRect();
+        const /** @type {?} */ selectRect = this._selectElement.getBoundingClientRect();
         const /** @type {?} */ scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
         const /** @type {?} */ offsetTop = selectRect.top + window.pageYOffset;
         const /** @type {?} */ height = selectRect.height;
@@ -1931,6 +1958,7 @@ NgDropdownPanelComponent.propDecorators = {
     "update": [{ type: Output },],
     "scrollToEnd": [{ type: Output },],
     "positionChange": [{ type: Output },],
+    "outsideClick": [{ type: Output },],
     "contentElementRef": [{ type: ViewChild, args: ['content', { read: ElementRef },] },],
     "scrollElementRef": [{ type: ViewChild, args: ['scroll', { read: ElementRef },] },],
     "paddingElementRef": [{ type: ViewChild, args: ['padding', { read: ElementRef },] },],
@@ -1965,11 +1993,15 @@ class NgSelectComponent {
      * @param {?} config
      * @param {?} _cd
      * @param {?} _console
+     * @param {?} _zone
+     * @param {?} _window
      * @param {?} elementRef
      */
-    constructor(config, _cd, _console, elementRef) {
+    constructor(config, _cd, _console, _zone, _window, elementRef) {
         this._cd = _cd;
         this._console = _console;
+        this._zone = _zone;
+        this._window = _window;
         this.elementRef = elementRef;
         // inputs
         this.items = [];
@@ -2108,8 +2140,26 @@ class NgSelectComponent {
      * @param {?} $event
      * @return {?}
      */
-    handleArrowClick($event) {
-        $event.stopPropagation();
+    handleMousedown($event) {
+        if ($event.target.className === 'ng-clear') {
+            this.handleClearClick();
+            return;
+        }
+        if ($event.target.className === 'ng-arrow') {
+            this.handleArrowClick();
+            return;
+        }
+        if (this.searchable) {
+            this.open();
+        }
+        else {
+            this.toggle();
+        }
+    }
+    /**
+     * @return {?}
+     */
+    handleArrowClick() {
         if (this.isOpen) {
             this.close();
         }
@@ -2118,11 +2168,9 @@ class NgSelectComponent {
         }
     }
     /**
-     * @param {?} $event
      * @return {?}
      */
-    handleClearClick($event) {
-        $event.stopPropagation();
+    handleClearClick() {
         if (this.hasValue) {
             this.clearModel();
         }
@@ -2211,7 +2259,7 @@ class NgSelectComponent {
         this._clearSearch();
         this._onTouched();
         this.closeEvent.emit();
-        this.detectChanges();
+        this._cd.markForCheck();
     }
     /**
      * @param {?} item
@@ -2368,8 +2416,15 @@ class NgSelectComponent {
      * @return {?}
      */
     focusSearchInput() {
-        this.filterInput.nativeElement.focus();
-        this.filterInput.nativeElement.select();
+        if (!this.filterInput) {
+            return;
+        }
+        this._zone.runOutsideAngular(() => {
+            this._window.setTimeout(() => {
+                this.filterInput.nativeElement.focus();
+                this.filterInput.nativeElement.select();
+            }, 0);
+        });
     }
     /**
      * @param {?} items
@@ -2663,7 +2718,7 @@ class NgSelectComponent {
 NgSelectComponent.decorators = [
     { type: Component, args: [{
                 selector: 'ng-select',
-                template: `<div (click)="searchable ? open() : toggle()" [class.ng-has-value]="hasValue" class="ng-control">
+                template: `<div (mousedown)="handleMousedown($event)" [class.ng-has-value]="hasValue" class="ng-control">
     <div class="ng-value-container">
         <div class="ng-placeholder">{{placeholder}}</div>
         <ng-container *ngIf="!multiLabelTemplate && selectedItems.length > 0">
@@ -2696,15 +2751,12 @@ NgSelectComponent.decorators = [
         </div>
     </div>
     <div class="ng-spinner-loader" *ngIf="isLoading"></div>
-    <span *ngIf="showClear()" (click)="handleClearClick($event)" class="ng-clear-zone" title="{{clearAllText}}">
+    <span *ngIf="showClear()" class="ng-clear-zone" title="{{clearAllText}}">
         <span class="ng-clear" aria-hidden="true">×</span>
     </span>
-    <span (click)="handleArrowClick($event)" class="ng-arrow-zone">
+    <span class="ng-arrow-zone">
         <span class="ng-arrow"></span>
     </span>
-</div>
-<div class="ng-overlay-container" *ngIf="isOpen">
-    <div class="ng-overlay" (click)="close()" ></div>
 </div>
 <ng-dropdown-panel *ngIf="isOpen"
     class="ng-dropdown-panel"
@@ -2718,6 +2770,7 @@ NgSelectComponent.decorators = [
     (update)="viewPortItems = $event"
     (positionChange)="currentDropdownPosition = $event"
     (scrollToEnd)="scrollToEnd.emit($event)"
+    (outsideClick)="close()"
     [ngClass]="{'multiple': multiple}">
     <ng-container>
         <div class="ng-option" role="option" (click)="toggleItem(item)" (mousedown)="$event.preventDefault()" (mouseover)="onItemHover(item)"
@@ -2922,23 +2975,6 @@ NgSelectComponent.decorators = [
       height:0;
       width:0;
       position:relative; }
-  .ng-select .ng-overlay-container{
-    pointer-events:none;
-    top:0;
-    left:0;
-    height:100%;
-    width:100%;
-    position:fixed;
-    z-index:1000; }
-    .ng-select .ng-overlay-container .ng-overlay{
-      top:0;
-      bottom:0;
-      left:0;
-      right:0;
-      opacity:0;
-      position:absolute;
-      pointer-events:auto;
-      z-index:1000; }
 `],
                 providers: [{
                         provide: NG_VALUE_ACCESSOR,
@@ -2961,6 +2997,8 @@ NgSelectComponent.ctorParameters = () => [
     { type: undefined, decorators: [{ type: Inject, args: [NG_SELECT_DEFAULT_CONFIG,] },] },
     { type: ChangeDetectorRef, },
     { type: ConsoleService, },
+    { type: NgZone, },
+    { type: WindowService, },
     { type: ElementRef, },
 ];
 NgSelectComponent.propDecorators = {
