@@ -2328,18 +2328,20 @@ class NgSelectComponent {
         }
     }
     /**
+     * @param {?} $event
      * @return {?}
      */
-    onInputFocus() {
+    onInputFocus($event) {
         this.isFocused = true;
-        this.focusEvent.emit(null);
+        this.focusEvent.emit($event);
     }
     /**
+     * @param {?} $event
      * @return {?}
      */
-    onInputBlur() {
+    onInputBlur($event) {
         this.isFocused = false;
-        this.blurEvent.emit(null);
+        this.blurEvent.emit($event);
         if (!this.isOpen && !this.isDisabled) {
             this._onTouched();
         }
@@ -2687,8 +2689,8 @@ NgSelectComponent.decorators = [
                    [readOnly]="!searchable"
                    [value]="filterValue"
                    (input)="filter(filterInput.value)"
-                   (focus)="onInputFocus()"
-                   (blur)="onInputBlur()"
+                   (focus)="onInputFocus($event)"
+                   (blur)="onInputBlur($event)"
                    (change)="$event.stopPropagation()"
                    role="combobox">
         </div>

@@ -108,8 +108,8 @@ export declare class NgSelectComponent implements OnDestroy, OnChanges, AfterVie
     showNoItemsFound(): boolean;
     showTypeToSearch(): boolean;
     filter(term: string): void;
-    onInputFocus(): void;
-    onInputBlur(): void;
+    onInputFocus($event: any): void;
+    onInputBlur($event: any): void;
     onItemHover(item: NgOption): void;
     detectChanges(): void;
     focusSearchInput(): void;
